@@ -8,12 +8,13 @@ import {MessageHashUtils} from "lib/openzeppelin-contracts/contracts/utils/crypt
 import {ECDSA} from "lib/openzeppelin-contracts/contracts/utils/cryptography/ECDSA.sol";
 import {SIG_VALIDATION_FAILED, SIG_VALIDATION_SUCCESS} from "lib/account-abstraction/contracts/core/Helpers.sol";
 import {IEntryPoint} from "lib/account-abstraction/contracts/interfaces/IEntryPoint.sol";
+import {console2} from "lib/forge-std/src/Script.sol";
 
 contract MinimalAccount is IAccount, Ownable {
     error MinimalAccount__NotFromEntryPoint();
     error MinimalAccount__NotFromEntryPointOrOwner();
     error MinimalAccount__CallFailed(bytes);
-    IEntryPoint private immutable i_entryPoint;
+    IEntryPoint public immutable i_entryPoint;
 
     modifier requireFromEntryPoint() {
         if (msg.sender != address(i_entryPoint)) {
@@ -53,7 +54,7 @@ contract MinimalAccount is IAccount, Ownable {
         bytes32 userOpHash,
         uint256 missingAccountFunds
     ) external requireFromEntryPoint returns (uint256 validationData) {
-        _validateSignature(userOp, userOpHash);
+        validationData = _validateSignature(userOp, userOpHash);
         _payprefund(missingAccountFunds);
     }
 
@@ -73,11 +74,16 @@ contract MinimalAccount is IAccount, Ownable {
     }
 
     function _payprefund(uint256 missingAccountFunds) internal {
-        (bool success, ) = payable(msg.sender).call{
-            value: missingAccountFunds,
-            gas: type(uint256).max
-        }(" ");
-        (success);
+        console2.log("MinimalAccount Balance:", address(this).balance);
+        console2.log("Missing Prefund Amount:", missingAccountFunds);
+
+        require(missingAccountFunds > 0, "No prefund needed");
+        require(address(this).balance >= missingAccountFunds, "Not enough ETH");
+
+        (bool success, ) = payable(msg.sender).call{value: missingAccountFunds}(
+            ""
+        );
+        require(success, "Prefund payment failed");
     }
 
     function getEntryPoint() external view returns (address) {
